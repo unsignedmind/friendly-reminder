@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from "react";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const STORAGE_KEY = "friend-reminder-data-v4";
+const STORAGE_KEY    = "friend-reminder-data-v4";
+const ONBOARDING_KEY = "friend-reminder-onboarding-done";
 const ms = (days) => days * 24 * 60 * 60 * 1000;
 const daysAgo = (d) => Date.now() - ms(d);
 
@@ -17,22 +18,7 @@ function isoToTimestamp(iso) {
 const DEFAULT_GROUPS = [{ id: "favorites", name: "Favoriten", canDelete: false }];
 
 function generateDummyData() {
-  const interval = 30;
-  const friends = [
-    { id: 1, name: "Anna",  intervalDays: interval, group: "favorites" },
-    { id: 2, name: "Ben",   intervalDays: interval, group: null },
-    { id: 3, name: "Clara", intervalDays: interval, group: null },
-    { id: 4, name: "David", intervalDays: interval, group: "favorites" },
-    { id: 5, name: "Eva",   intervalDays: interval, group: null },
-  ];
-  const contacts = {
-    1: { lastContact: daysAgo(Math.round(interval * 0.2)),  lastType: "real" },
-    2: { lastContact: daysAgo(Math.round(interval * 0.55)), lastType: "chat" },
-    3: { lastContact: daysAgo(Math.round(interval * 0.85)), lastType: "real" },
-    4: { lastContact: daysAgo(Math.round(interval * 1.15)), lastType: "chat" },
-    5: { lastContact: daysAgo(Math.round(interval * 1.5)),  lastType: "real" },
-  };
-  return { friends, contacts, groups: DEFAULT_GROUPS };
+  return { friends: [], contacts: {}, groups: DEFAULT_GROUPS };
 }
 
 const INTERVAL_PRESETS = [
@@ -625,22 +611,339 @@ function GroupFilterCarousel({ groups, activeGroup, onChange, onOpenGroupsManage
   );
 }
 
+// ─── Onboarding ───────────────────────────────────────────────────────────────
+
+const OB_TOTAL = 4;
+
+const OB_COLORS = [
+  { ring: "#52a069", bg: "#d4edda", label: "Frisch",      emoji: "🌿", ratio: 0.15 },
+  { ring: "#7ab648", bg: "#d8ecc2", label: "Gut",         emoji: "🌼", ratio: 0.55 },
+  { ring: "#e6a817", bg: "#fff3cd", label: "Bald melden", emoji: "☀️", ratio: 0.85 },
+  { ring: "#e07a30", bg: "#ffe0b2", label: "Zu lang!",    emoji: "🍂", ratio: 1.15 },
+  { ring: "#d94040", bg: "#ffd5d5", label: "Dringend!",   emoji: "🔥", ratio: 1.5  },
+];
+
+const OB_INTERVALS = [
+  { label: "Wöchentlich",   days: 7  },
+  { label: "Monatlich",     days: 30 },
+  { label: "Alle 3 Monate", days: 90 },
+];
+
+function OBProgressDots({ current }) {
+  return (
+    <div style={{ display: "flex", gap: 6, justifyContent: "center" }}>
+      {Array.from({ length: OB_TOTAL }).map((_, i) => (
+        <div key={i} style={{
+          width: i === current ? 20 : 7, height: 7, borderRadius: 4,
+          background: i === current ? "#52a069" : "#ddd5c8",
+          transition: "all 0.3s cubic-bezier(0.4,0,0.2,1)",
+        }} />
+      ))}
+    </div>
+  );
+}
+
+function OBShell({ step, onNext, onSkip, nextLabel = "Weiter →", hideSkip, children }) {
+  return (
+    <div style={{
+      minHeight: "100dvh", background: "linear-gradient(135deg, #f9f0e3 0%, #f0e4d0 50%, #e8d9c4 100%)",
+      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+      padding: "32px 24px", fontFamily: "'Lato', sans-serif",
+      animation: "obStepIn 0.35s cubic-bezier(0.4,0,0.2,1)",
+    }}>
+      <div style={{ width: "100%", maxWidth: 420, display: "flex", flexDirection: "column", gap: 28 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "center" }}>
+          <OBProgressDots current={step} />
+          <span style={{ fontSize: 11, color: "#b8a898", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'Lato', sans-serif" }}>
+            Schritt {step + 1} von {OB_TOTAL}
+          </span>
+        </div>
+        <div>{children}</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <button onClick={onNext} style={{
+            width: "100%", padding: "16px", borderRadius: 14, border: "none",
+            background: "#52a069", color: "#fff",
+            fontFamily: "'Lato', sans-serif", fontSize: 16, fontWeight: 700,
+            cursor: "pointer", boxShadow: "0 6px 20px #52a06940",
+            transition: "transform 0.15s, box-shadow 0.15s",
+          }}
+            onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 10px 28px #52a06950"; }}
+            onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = "0 6px 20px #52a06940"; }}
+          >{nextLabel}</button>
+          {!hideSkip && (
+            <button onClick={onSkip} style={{
+              background: "none", border: "none", color: "#b8a898",
+              fontFamily: "'Lato', sans-serif", fontSize: 13, cursor: "pointer",
+              padding: "4px", textDecoration: "underline", textUnderlineOffset: 3,
+            }}>Überspringen</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OBStepWelcome({ onNext, onSkip }) {
+  return (
+    <OBShell step={0} onNext={onNext} onSkip={onSkip} nextLabel="Los geht's 🌿">
+      <div style={{ display: "flex", justifyContent: "center", gap: 10, marginBottom: 32, alignItems: "flex-end" }}>
+        {OB_COLORS.map((c, i) => {
+          const isCenter = i === 2;
+          return (
+            <div key={i} style={{
+              transform: `translateY(${Math.abs(i - 2) * 7}px) scale(${isCenter ? 1 : 0.8})`,
+              opacity: isCenter ? 1 : 0.55 + (i === 1 || i === 3 ? 0.2 : 0),
+            }}>
+              <RingAvatar name={["A","B","C","D","E"][i]} ratio={c.ratio} size={isCenter ? 72 : 54} />
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ textAlign: "center" }}>
+        <h1 style={{ fontFamily: "'Fraunces', serif", fontSize: "clamp(28px, 7vw, 40px)", color: "#2d2015", letterSpacing: "-0.02em", lineHeight: 1.15, marginBottom: 14 }}>
+          Freundschaften pflegen,<br />die dir wichtig sind.
+        </h1>
+        <p style={{ color: "#8a7060", fontSize: 15, lineHeight: 1.65, maxWidth: 340, margin: "0 auto" }}>
+          Friendly Reminder erinnert dich daran, wann du dich das letzte Mal bei deinen Freunden gemeldet hast – bevor zu viel Zeit vergeht.
+        </p>
+      </div>
+    </OBShell>
+  );
+}
+
+function OBStepRing({ onNext, onSkip }) {
+  const [val, setVal] = useState(0);
+  const ratio = val / 100;
+  const color = OB_COLORS.find(c => c.ratio >= ratio) || OB_COLORS[4];
+
+  return (
+    <OBShell step={1} onNext={onNext} onSkip={onSkip}>
+      <div style={{ textAlign: "center" }}>
+        <h2 style={{ fontFamily: "'Fraunces', serif", fontSize: 26, color: "#2d2015", marginBottom: 8, letterSpacing: "-0.01em" }}>
+          Dein Ring zeigt dir alles
+        </h2>
+        <p style={{ color: "#8a7060", fontSize: 14, lineHeight: 1.6, marginBottom: 28 }}>
+          Je weiter sich der Ring füllt, desto länger ist dein letzter Kontakt her. Zieh den Regler und sieh es selbst.
+        </p>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, marginBottom: 28 }}>
+          <RingAvatar name="A" ratio={ratio} size={96} />
+          <div style={{
+            display: "inline-flex", alignItems: "center", gap: 7,
+            background: color.bg, border: `2px solid ${color.ring}40`,
+            borderRadius: 24, padding: "6px 16px", transition: "all 0.4s ease",
+          }}>
+            <span style={{ fontSize: 15 }}>{color.emoji}</span>
+            <span style={{ fontFamily: "'Lato', sans-serif", fontSize: 14, fontWeight: 700, color: color.ring }}>{color.label}</span>
+          </div>
+        </div>
+        <div style={{ padding: "0 8px", marginBottom: 24 }}>
+          <input type="range" min="0" max="149" value={val}
+            onChange={e => setVal(Number(e.target.value))}
+            className="ob-range"
+            style={{ width: "100%", cursor: "pointer", accentColor: color.ring }}
+          />
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
+            <span style={{ fontSize: 11, color: "#b8a898", fontFamily: "'Lato', sans-serif" }}>Gerade gesprochen</span>
+            <span style={{ fontSize: 11, color: "#b8a898", fontFamily: "'Lato', sans-serif" }}>Viel zu lange her</span>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 5, justifyContent: "center", flexWrap: "wrap" }}>
+          {OB_COLORS.map(c => (
+            <div key={c.label} style={{
+              display: "flex", alignItems: "center", gap: 4,
+              background: c.bg, borderRadius: 20, padding: "3px 10px",
+              border: `1.5px solid ${c.ring}33`,
+              opacity: color.ring === c.ring ? 1 : 0.4,
+              transition: "opacity 0.3s ease",
+            }}>
+              <span style={{ fontSize: 11 }}>{c.emoji}</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: c.ring, fontFamily: "'Lato', sans-serif" }}>{c.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </OBShell>
+  );
+}
+
+function OBStepFirstFriend({ onNext, onSkip, onFriendCreated }) {
+  const [name, setName]           = useState("");
+  const [interval, setIntervalSel] = useState(null);
+  const [nameError, setNameError]   = useState(false);
+  const [intError, setIntError]     = useState(false);
+
+  const handleNext = () => {
+    const ne = !name.trim(), ie = !interval;
+    setNameError(ne); setIntError(ie);
+    if (ne || ie) return;
+    onFriendCreated({ name: name.trim(), interval });
+    onNext();
+  };
+
+  return (
+    <OBShell step={2} onNext={handleNext} onSkip={onSkip} nextLabel="Freund hinzufügen ✓">
+      <div>
+        <h2 style={{ fontFamily: "'Fraunces', serif", fontSize: 26, color: "#2d2015", marginBottom: 8, letterSpacing: "-0.01em" }}>
+          Wen möchtest du im Blick behalten?
+        </h2>
+        <p style={{ color: "#8a7060", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
+          Fang mit einer Person an. Du kannst jederzeit weitere hinzufügen.
+        </p>
+
+        {/* Name */}
+        <div style={{ marginBottom: 20 }}>
+          <FieldLabel text="Name" error={nameError ? "Pflichtfeld" : null} />
+          <input value={name}
+            onChange={e => { setName(e.target.value); if (e.target.value.trim()) setNameError(false); }}
+            placeholder="z.B. Anna" autoFocus
+            style={{
+              width: "100%", padding: "14px 16px", borderRadius: 12,
+              border: `2px solid ${nameError ? "#d94040" : "#ddd5c8"}`,
+              background: nameError ? "#fff5f5" : "#fdf8f1",
+              fontFamily: "'Fraunces', serif", fontSize: 20, color: "#2d2015",
+              outline: "none", WebkitAppearance: "none",
+            }}
+          />
+        </div>
+
+        {/* Interval */}
+        <div>
+          <FieldLabel text="Wie oft Kontakt halten?" error={intError ? "Bitte wählen" : null} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {OB_INTERVALS.map(opt => {
+              const isActive = interval?.days === opt.days;
+              return (
+                <button key={opt.days} onClick={() => { setIntervalSel(opt); setIntError(false); }} style={{
+                  padding: "13px 16px", borderRadius: 12, cursor: "pointer",
+                  border: `2px solid ${isActive ? "#52a069" : intError ? "#d9404433" : "#ddd5c8"}`,
+                  background: isActive ? "#d4edda" : "#fdf8f1",
+                  color: isActive ? "#2a6040" : "#6a5545",
+                  fontFamily: "'Lato', sans-serif", fontSize: 15, fontWeight: isActive ? 700 : 400,
+                  textAlign: "left", transition: "all 0.18s",
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                }}>
+                  <span>{opt.label}</span>
+                  {isActive && <span>✓</span>}
+                </button>
+              );
+            })}
+          </div>
+          {/* Custom interval hint */}
+          <div style={{
+            display: "flex", alignItems: "center", gap: 10,
+            marginTop: 10, padding: "10px 14px", borderRadius: 10,
+            background: "#faf5ee", border: "1.5px dashed #c8b8a8",
+          }}>
+            <span style={{ fontSize: 15, flexShrink: 0 }}>✏️</span>
+            <span style={{ fontFamily: "'Lato', sans-serif", fontSize: 13, color: "#8a7060", lineHeight: 1.5 }}>
+              Genauere Intervalle möglich – z.&thinsp;B. alle{" "}
+              <strong style={{ color: "#2d2015" }}>14 Tage</strong> oder{" "}
+              <strong style={{ color: "#2d2015" }}>45 Tage</strong>. Im Profil jederzeit anpassbar.
+            </span>
+          </div>
+        </div>
+      </div>
+    </OBShell>
+  );
+}
+
+function OBStepDone({ friend, onFinish }) {
+  const [show, setShow] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setShow(true), 120); return () => clearTimeout(t); }, []);
+
+  const name         = friend?.name || "Dein Freund";
+  const intervalDays = friend?.interval?.days || 30;
+  // Build a minimal friend + contactData for FriendCard preview
+  const previewFriend = { id: 0, name, intervalDays, group: null };
+  const previewContact = { lastContact: Date.now(), lastType: "real" };
+
+  return (
+    <OBShell step={3} onNext={onFinish} hideSkip nextLabel="App öffnen 🌿">
+      <div style={{ textAlign: "center" }}>
+        <h2 style={{ fontFamily: "'Fraunces', serif", fontSize: 26, color: "#2d2015", marginBottom: 8, letterSpacing: "-0.01em" }}>
+          Alles bereit! 🎉
+        </h2>
+        <p style={{ color: "#8a7060", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
+          {name} ist jetzt in deiner Liste. So sieht deine Karte in der App aus:
+        </p>
+
+        {/* Real FriendCard, pointer-events disabled */}
+        <div style={{
+          opacity: show ? 1 : 0,
+          transform: show ? "translateY(0) scale(1)" : "translateY(16px) scale(0.96)",
+          transition: "all 0.5s cubic-bezier(0.34,1.56,0.64,1)",
+          marginBottom: 28, pointerEvents: "none", userSelect: "none",
+        }}>
+          <FriendCard
+            friend={previewFriend}
+            contactData={previewContact}
+            onLogContact={() => {}}
+            onEdit={() => {}}
+          />
+        </div>
+
+        {/* Quick tips */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, textAlign: "left" }}>
+          {[
+            { icon: "👆", text: "Karte antippen → Kontakt bearbeiten" },
+            { icon: "✏️", text: "Stift-Icon → Intervall & Gruppe anpassen" },
+            { icon: "➕", text: "Plus-Karte → Weitere Freunde hinzufügen" },
+          ].map(tip => (
+            <div key={tip.icon} style={{
+              display: "flex", alignItems: "center", gap: 12,
+              background: "#fdf8f1", borderRadius: 10, padding: "11px 14px",
+              border: "1.5px solid #e8d9c4",
+            }}>
+              <span style={{ fontSize: 18, flexShrink: 0 }}>{tip.icon}</span>
+              <span style={{ fontFamily: "'Lato', sans-serif", fontSize: 13, color: "#6a5545" }}>{tip.text}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </OBShell>
+  );
+}
+
+function Onboarding({ onComplete }) {
+  const [step, setStep] = useState(0);
+  const [friend, setFriend] = useState(null);
+
+  const next = () => setStep(s => s + 1);
+  const skip = () => setStep(OB_TOTAL - 1);
+
+  const finish = () => {
+    try { localStorage.setItem(ONBOARDING_KEY, "1"); } catch {}
+    onComplete(friend);
+  };
+
+  return (
+    <>
+      {step === 0 && <OBStepWelcome onNext={next} onSkip={skip} />}
+      {step === 1 && <OBStepRing    onNext={next} onSkip={skip} />}
+      {step === 2 && <OBStepFirstFriend onNext={next} onSkip={skip} onFriendCreated={setFriend} />}
+      {step === 3 && <OBStepDone friend={friend} onFinish={finish} />}
+    </>
+  );
+}
+
 // ─── App ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const dummy = generateDummyData();
-  const [friends, setFriends]         = useState(dummy.friends);
-  const [contacts, setContacts]       = useState(dummy.contacts);
-  const [groups, setGroups]           = useState(dummy.groups);
+  const [friends, setFriends]         = useState([]);
+  const [contacts, setContacts]       = useState({});
+  const [groups, setGroups]           = useState(DEFAULT_GROUPS);
   const [selected, setSelected]       = useState(null);
   const [editing, setEditing]         = useState(null);
   const [addingNew, setAddingNew]     = useState(false);
   const [toast, setToast]             = useState(null);
   const [activeGroup, setActiveGroup] = useState("all");
   const [showGroupsMgr, setGroupsMgr] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(null);
 
   useEffect(() => {
     try {
+      const obDone = localStorage.getItem(ONBOARDING_KEY);
+      if (!obDone) { setShowOnboarding(true); return; }
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const data = JSON.parse(raw);
@@ -648,13 +951,31 @@ export default function App() {
         if (data.contacts) setContacts(data.contacts);
         if (data.groups)   setGroups(data.groups);
       }
-    } catch {}
+      setShowOnboarding(false);
+    } catch { setShowOnboarding(false); }
   }, []);
+
+  const handleOnboardingComplete = (obFriend) => {
+    const newFriends = obFriend
+      ? [{ id: 1, name: obFriend.name, intervalDays: obFriend.interval?.days || 30, group: null }]
+      : [];
+    const newContacts = obFriend
+      ? { 1: { lastContact: Date.now(), lastType: "real" } }
+      : {};
+    setFriends(newFriends);
+    setContacts(newContacts);
+    save(newFriends, newContacts, DEFAULT_GROUPS);
+    setShowOnboarding(false);
+  };
 
   const save = (f, c, g) => {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ friends: f, contacts: c, groups: g })); } catch {}
   };
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
+
+  // Show nothing until we've checked localStorage (avoids flash)
+  if (showOnboarding === null) return null;
+  if (showOnboarding) return <Onboarding onComplete={handleOnboardingComplete} />;
 
   const logContact = (type, timestamp) => {
     if (!selected) return;
@@ -716,9 +1037,13 @@ export default function App() {
         @keyframes slideUp     { from { opacity: 0; transform: translateY(20px) } to { opacity: 1; transform: translateY(0) } }
         @keyframes slideUpSheet{ from { transform: translateY(100%) } to { transform: translateY(0) } }
         @keyframes toastIn     { from { opacity: 0; transform: translateY(12px) } to { opacity: 1; transform: translateY(0) } }
+        @keyframes obStepIn    { from { opacity: 0; transform: translateX(20px) } to { opacity: 1; transform: translateX(0) } }
 
         input[type=number]::-webkit-inner-spin-button { opacity: 1; }
         input[type=date]::-webkit-calendar-picker-indicator { opacity: 0.5; cursor: pointer; }
+        .ob-range { -webkit-appearance: none; appearance: none; height: 5px; border-radius: 4px; background: #ddd5c8; outline: none; }
+        .ob-range::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; border-radius: 50%; background: currentColor; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.18); }
+        .ob-range::-moz-range-thumb { width: 22px; height: 22px; border-radius: 50%; background: currentColor; cursor: pointer; border: none; }
         .filter-carousel::-webkit-scrollbar { display: none; }
 
         @media (hover: hover) {
