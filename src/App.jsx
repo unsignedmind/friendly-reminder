@@ -801,7 +801,7 @@ function OBStepFirstFriend({ onNext, onSkip, onFriendCreated }) {
               border: `2px solid ${nameError ? "#d94040" : "#ddd5c8"}`,
               background: nameError ? "#fff5f5" : "#fdf8f1",
               fontFamily: "'Fraunces', serif", fontSize: 20, color: "#2d2015",
-              outline: "none", WebkitAppearance: "none",
+              outline: "none", WebkitAppearance: "none", boxSizing: "border-box",
             }}
           />
         </div>
